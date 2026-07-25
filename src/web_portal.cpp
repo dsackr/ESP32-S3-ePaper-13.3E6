@@ -1,5 +1,6 @@
 #include "web_portal.h"
 
+#include <Preferences.h>
 #include <Update.h>
 #include <WiFi.h>
 #include <cmath>
@@ -26,6 +27,26 @@
 namespace web_portal {
 
 namespace {
+
+// Home Assistant base URL, learned once from the user the first time they
+// click a HA tile rather than hardcoded — see handlePortal()/handleHaLinkSave().
+constexpr const char *kHaPrefsNamespace = "ha_link";
+
+String loadHaBaseUrl() {
+    Preferences prefs;
+    prefs.begin(kHaPrefsNamespace, true);
+    String url = prefs.getString("base_url", "");
+    prefs.end();
+    return url;
+}
+
+void saveHaBaseUrl(String url) {
+    while (url.endsWith("/")) url.remove(url.length() - 1);
+    Preferences prefs;
+    prefs.begin(kHaPrefsNamespace, false);
+    prefs.putString("base_url", url);
+    prefs.end();
+}
 
 String escJ(const String &s) {
     String out;
@@ -116,6 +137,7 @@ const char SVG_CHIP[] =
 void handlePortal(AsyncWebServerRequest *request) {
     bool conn = WiFi.status() == WL_CONNECTED;
     battery::Status bat = battery::read();
+    String haBase = loadHaBaseUrl();
 
     String html;
     html.reserve(4096);
@@ -158,12 +180,12 @@ void handlePortal(AsyncWebServerRequest *request) {
     html += SVG_UPLOAD;
     html += "</div><h2>Upload</h2><p>Upload a .bin file to display custom artwork</p></a>";
 
-    html += "<a class='tile' href='https://ha.dalesackrider.com/config/integrations/integration/fraimic' target='_blank'>"
+    html += "<a class='tile' href='javascript:void(0)' onclick=\"openHaLink('/config/integrations/integration/fraimic')\">"
             "<div class='ic'>";
     html += SVG_PLUS;
     html += "</div><h2>Device Setup</h2><p>Add this frame to Home Assistant</p></a>";
 
-    html += "<a class='tile' href='https://ha.dalesackrider.com/fraimic' target='_blank'>"
+    html += "<a class='tile' href='javascript:void(0)' onclick=\"openHaLink('/fraimic')\">"
             "<div class='ic'>";
     html += SVG_HOME;
     html += "</div><h2>Home Assistant</h2><p>Open your Home Assistant dashboard</p></a>";
@@ -178,7 +200,22 @@ void handlePortal(AsyncWebServerRequest *request) {
 
     html += "</div>"
             "<div class='foot'>ESP32-S3-ePaper-13.3E6 &bull; <a href='/info'>Device Information</a></div>"
-            "</div></body></html>";
+            "</div>"
+            "<script>"
+            "var HA_BASE_URL=\"" + escJ(haBase) +
+            "\";"
+            "function openHaLink(path){"
+            "var base=HA_BASE_URL;"
+            "if(base){window.open(base+path,'_blank');return;}"
+            "base=prompt('Enter your Home Assistant base URL (e.g. https://ha.example.com):');"
+            "if(!base)return;"
+            "base=base.replace(/\\/+$/,'');"
+            "fetch('/ha-link/save',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+            "body:'base_url='+encodeURIComponent(base)})"
+            ".then(function(){window.open(base+path,'_blank');})"
+            ".catch(function(){window.open(base+path,'_blank');});"
+            "}"
+            "</script></body></html>";
 
     request->send(200, "text/html", html);
 }
@@ -700,6 +737,19 @@ void handleOtaDone(AsyncWebServerRequest *request) {
     if (ok) restartSoon();
 }
 
+// POST /ha-link/save — stores the Home Assistant base URL the user typed
+// in when they first clicked a HA tile with none configured yet (see
+// handlePortal()'s openHaLink()). Once saved, those tiles link straight
+// there without prompting again.
+void handleHaLinkSave(AsyncWebServerRequest *request) {
+    if (!request->hasParam("base_url", true) || request->getParam("base_url", true)->value().isEmpty()) {
+        request->send(400, "application/json", "{\"error\":\"missing base_url\"}");
+        return;
+    }
+    saveHaBaseUrl(request->getParam("base_url", true)->value());
+    request->send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
 // POST /beep — speaker smoke test, not part of any Fraimic-compatible
 // behavior. Blocks the async worker task for the tone's duration, so keep
 // it short; fine for an occasional manual trigger.
@@ -767,6 +817,8 @@ void begin(AsyncWebServer &server) {
 
     server.on("/beep", HTTP_POST, handleBeep);
     server.on("/mic-test", HTTP_POST, handleMicTest);
+
+    server.on("/ha-link/save", HTTP_POST, handleHaLinkSave);
 }
 
 }  // namespace web_portal
