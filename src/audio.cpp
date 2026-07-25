@@ -2,6 +2,7 @@
 
 #include <ESP_I2S.h>
 #include <Wire.h>
+#include <math.h>
 
 #include "es7210.h"
 #include "es8311.h"
@@ -72,6 +73,23 @@ size_t playPcm(const int16_t *samples, size_t sample_count) {
 size_t recordPcm(int16_t *buffer, size_t max_samples) {
     if (!micReady) return 0;
     return i2s.readBytes((char *)buffer, max_samples * sizeof(int16_t)) / sizeof(int16_t);
+}
+
+bool isMicReady() { return micReady; }
+
+void beep(uint32_t freq_hz, uint32_t duration_ms) {
+    size_t sample_count = (size_t)((uint64_t)kSampleRateHz * duration_ms / 1000);
+    int16_t *samples = (int16_t *)malloc(sample_count * sizeof(int16_t));
+    if (!samples) return;
+
+    constexpr int16_t kAmplitude = 8000;  // moderate volume, avoids clipping
+    for (size_t i = 0; i < sample_count; i++) {
+        float phase = 2.0f * PI * freq_hz * i / kSampleRateHz;
+        samples[i] = (int16_t)(kAmplitude * sinf(phase));
+    }
+
+    playPcm(samples, sample_count);
+    free(samples);
 }
 
 }  // namespace audio

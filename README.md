@@ -22,13 +22,14 @@ codec) instead of re-deriving them against raw IDF — see `NOTICE.md`.
 | --- | --- |
 | E-paper panel (init/clear/push/sleep) | Working — driver logic adapted 1:1 from Waveshare's example |
 | Fraimic REST API (`/api/info`, `/api/battery`, `/api/refresh`, `/api/image`, `/api/restart`, `/api/sleep`) | Implemented, stock (non-eframe-extended) shape |
+| Web portal (`/`, `/wifi`, `/upload`, `/info`, `/logs`, `/ota`) | Implemented, browser UI ported from a sibling project — see `src/web_portal.cpp`. Not implemented: orientation control, SD image gallery, fuel-gauge calibration (none apply to this board) |
 | WiFi provisioning (SoftAP + captive portal) | Implemented |
 | SD card | Implemented (mount only; nothing reads/writes it yet) |
-| Speaker (ES8311) | Implemented, adapted from Waveshare's tested example |
-| Microphone (ES7210) | Implemented, but **not cross-checked against a working example on this board** — see `lib/es7210/es7210.h` |
+| Speaker (ES8311) | Working — confirmed on real hardware via `audio::beep()` (`POST /beep`) |
+| Microphone (ES7210) | Working — confirmed on real hardware via `POST /mic-test`, which reports amplitude stats (min/max/RMS) from a live capture rather than just init success |
 | Battery percentage | ADC-based estimate; **verify `kDividerRatio` in `src/battery.cpp` against a multimeter** |
 | Charging / cable-connected status | Not wired up — no confirmed ETA6098 status line found in the docs reviewed so far |
-| `device_type` / `firmware_version` strings | Placeholders in `src/fraimic_api.cpp` — swap in real Fraimic values if you can capture them from genuine hardware |
+| `device_type` / `firmware_version` strings | Placeholders in `include/device_info.h` — swap in real Fraimic values if you can capture them from genuine hardware |
 
 ## Building
 

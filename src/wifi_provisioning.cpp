@@ -63,16 +63,9 @@ void handleSave() {
         server.send(400, "text/plain", "ssid required");
         return;
     }
-    Preferences prefs;
-    prefs.begin(kPrefsNamespace, false);
-    prefs.putString("ssid", server.arg("ssid"));
-    prefs.putString("password", server.arg("password"));
-    prefs.end();
-
     server.send(200, "text/html",
                 "<html><body><h3>Saved. Restarting and connecting&hellip;</h3></body></html>");
-    delay(1000);
-    ESP.restart();
+    saveCredentialsAndRestart(server.arg("ssid"), server.arg("password"));
 }
 
 // Any unrecognized path (including OS captive-portal probe URLs like
@@ -84,6 +77,16 @@ void handleNotFound() {
 }
 
 }  // namespace
+
+void saveCredentialsAndRestart(const String &ssid, const String &password) {
+    Preferences prefs;
+    prefs.begin(kPrefsNamespace, false);
+    prefs.putString("ssid", ssid);
+    prefs.putString("password", password);
+    prefs.end();
+    delay(800);
+    ESP.restart();
+}
 
 bool connectSaved(uint32_t timeout_ms) {
     Preferences prefs;

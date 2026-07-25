@@ -14,4 +14,9 @@ bool connectSaved(uint32_t timeout_ms = 15000);
 // the caller never regains control on success.
 void runProvisioningPortal();
 
+// Saves credentials to NVS and restarts — never returns. Shared by the
+// AP-mode captive portal above and web_portal's STA-mode /wifi/save route,
+// so both paths persist credentials the same way.
+void saveCredentialsAndRestart(const String &ssid, const String &password);
+
 }  // namespace wifi_provisioning

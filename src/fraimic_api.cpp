@@ -8,6 +8,7 @@
 
 #include "EPD_13in3e.h"
 #include "battery.h"
+#include "device_info.h"
 
 // Endpoint set and JSON shapes mirror the stock (non-eframe-extended) Fraimic
 // REST API: github.com/dsackr/Fraimic_eink_canvas_home_assistant_restAPI_guide
@@ -19,14 +20,10 @@ namespace fraimic_api {
 
 namespace {
 
-// TODO: replace with whatever a real Fraimic 13.3" unit actually reports —
-// these are placeholders, not observed values from genuine hardware.
-constexpr const char *kFirmwareVersion = "1.0.0-esp32";
-constexpr const char *kDeviceType = "13.3\" E-Ink";
+using device_info::kDeviceType;
+using device_info::kFirmwareVersion;
 
 constexpr int kBootButtonPin = 0;  // standard ESP32-S3 BOOT button, active-low
-
-AsyncWebServer server(80);
 
 uint8_t *imageBuf = nullptr;
 bool imageRequestValid = false;
@@ -186,7 +183,7 @@ void handleSleep(AsyncWebServerRequest *request) {
 
 }  // namespace
 
-void begin() {
+void begin(AsyncWebServer &server) {
     imageBuf = (uint8_t *)heap_caps_malloc(EPD_13IN3E_FRAIMIC_BIN_BYTES, MALLOC_CAP_SPIRAM);
 
     server.on("/api/info", HTTP_GET, handleInfo);
@@ -197,8 +194,6 @@ void begin() {
     server.on(
         "/api/image", HTTP_POST, handleImageDone, nullptr,
         handleImageBody);
-
-    server.begin();
 }
 
 }  // namespace fraimic_api
