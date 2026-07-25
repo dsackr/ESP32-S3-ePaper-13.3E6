@@ -20,9 +20,9 @@ codec) instead of re-deriving them against raw IDF — see `NOTICE.md`.
 
 | Subsystem | State |
 | --- | --- |
-| E-paper panel (init/clear/push/sleep) | Working — driver logic adapted 1:1 from Waveshare's example |
-| Fraimic REST API (`/api/info`, `/api/battery`, `/api/refresh`, `/api/image`, `/api/restart`, `/api/sleep`) | Implemented, stock (non-eframe-extended) shape |
-| Web portal (`/`, `/wifi`, `/upload`, `/info`, `/logs`, `/ota`) | Implemented, browser UI ported from a sibling project — see `src/web_portal.cpp`. Not implemented: orientation control, SD image gallery, fuel-gauge calibration (none apply to this board) |
+| E-paper panel (init/clear/push/sleep) | Working — driver logic adapted 1:1 from Waveshare's example. A full-color refresh takes ~33s; `EPD_13IN3E_DisplayFraimicBin()` is run on a dedicated task (`src/display_queue.cpp`), not inside an HTTP handler, so it doesn't block the web server or trip its watchdog |
+| Fraimic REST API (`/api/info`, `/api/battery`, `/api/refresh`, `/api/image`, `/api/restart`, `/api/sleep`) | Working — `/api/image` confirmed end-to-end on real hardware (upload → ~33s refresh → correct image on panel) |
+| Web portal (`/`, `/wifi`, `/upload`, `/info`, `/logs`, `/ota`) | Implemented, browser UI ported from a sibling project — see `src/web_portal.cpp`. `/upload` confirmed on real hardware. Not implemented: orientation control, SD image gallery, fuel-gauge calibration (none apply to this board) |
 | WiFi provisioning (SoftAP + captive portal) | Implemented |
 | SD card | Implemented (mount only; nothing reads/writes it yet) |
 | Speaker (ES8311) | Working — confirmed on real hardware via `audio::beep()` (`POST /beep`) |

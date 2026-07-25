@@ -11,6 +11,7 @@
 #include "battery.h"
 #include "device_config.h"
 #include "device_info.h"
+#include "display_queue.h"
 #include "remote_log.h"
 #include "wifi_provisioning.h"
 
@@ -396,14 +397,16 @@ void handleUploadPage(AsyncWebServerRequest *request) {
             "xhr.open('POST','/upload',true);"
             "xhr.onload=function(){"
             "if(xhr.status===200){"
-            "prog.style.color='#4CAF50';prog.textContent='Image displayed successfully!';"
+            "prog.style.color='#4CAF50';prog.textContent='Uploaded \\u2014 rendering on display now (takes a bit for this panel)\\u2026';"
+            "}else if(xhr.status===503){"
+            "prog.style.color='#E53935';prog.textContent='Display busy with another refresh \\u2014 try again shortly';"
             "}else{"
             "prog.style.color='#E53935';prog.textContent='Upload failed: '+xhr.status;"
             "}"
             "btn.disabled=false;btn.textContent='Upload Image';"
             "};"
             "xhr.onerror=function(){"
-            "prog.style.color='#E53935';prog.textContent='Connection lost (device may be refreshing display)';"
+            "prog.style.color='#E53935';prog.textContent='Connection lost during upload';"
             "btn.disabled=false;btn.textContent='Upload Image';"
             "};"
             "xhr.send(fd);"
@@ -420,7 +423,9 @@ void handleUploadFile(AsyncWebServerRequest *request, String filename, size_t in
     (void)final;
     if (index == 0) {
         uploadBytesReceived = 0;
-        uploadValid = uploadImageBuf != nullptr;
+        // Reject a new upload while the display task is still rendering the
+        // previous one — uploadImageBuf can't be safely overwritten mid-refresh.
+        uploadValid = uploadImageBuf != nullptr && !display_queue::busy();
     }
     if (uploadValid && uploadBytesReceived + len <= EPD_13IN3E_FRAIMIC_BIN_BYTES) {
         memcpy(uploadImageBuf + uploadBytesReceived, data, len);
@@ -429,12 +434,22 @@ void handleUploadFile(AsyncWebServerRequest *request, String filename, size_t in
 }
 
 void handleUploadDone(AsyncWebServerRequest *request) {
-    bool ok = uploadValid && uploadBytesReceived == EPD_13IN3E_FRAIMIC_BIN_BYTES;
-    if (ok) {
-        EPD_13IN3E_DisplayFraimicBin(uploadImageBuf, EPD_13IN3E_FRAIMIC_BIN_BYTES);
+    bool sizeOk = uploadValid && uploadBytesReceived == EPD_13IN3E_FRAIMIC_BIN_BYTES;
+
+    int code;
+    const char *body;
+    if (!sizeOk) {
+        code = 400;
+        body = "{\"error\":\"invalid image size\"}";
+    } else if (!display_queue::requestDisplay(uploadImageBuf, EPD_13IN3E_FRAIMIC_BIN_BYTES)) {
+        code = 503;
+        body = "{\"error\":\"display busy\"}";
+    } else {
+        code = 200;
+        body = "{\"status\":\"rendering\"}";
     }
-    request->send(ok ? 200 : 400, "application/json",
-                  ok ? "{\"status\":\"ok\"}" : "{\"error\":\"invalid image size\"}");
+    request->send(code, "application/json", body);
+
     uploadValid = false;
     uploadBytesReceived = 0;
 }

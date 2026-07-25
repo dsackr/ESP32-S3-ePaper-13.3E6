@@ -7,6 +7,7 @@
 #include "EPD_13in3e.h"
 #include "audio.h"
 #include "battery.h"
+#include "display_queue.h"
 #include "fraimic_api.h"
 #include "remote_log.h"
 #include "sd_card.h"
@@ -22,6 +23,7 @@ void setup() {
 
     DEV_Module_Init();
     EPD_13IN3E_Init();
+    display_queue::begin();
 
     battery::init();
 

@@ -9,6 +9,7 @@
 #include "EPD_13in3e.h"
 #include "battery.h"
 #include "device_info.h"
+#include "display_queue.h"
 
 // Endpoint set and JSON shapes mirror the stock (non-eframe-extended) Fraimic
 // REST API: github.com/dsackr/Fraimic_eink_canvas_home_assistant_restAPI_guide
@@ -128,7 +129,10 @@ void handleRefresh(AsyncWebServerRequest *request) {
         sendError(request, 404, "no image to refresh");
         return;
     }
-    EPD_13IN3E_DisplayFraimicBin(imageBuf, EPD_13IN3E_FRAIMIC_BIN_BYTES);
+    if (!display_queue::requestDisplay(imageBuf, EPD_13IN3E_FRAIMIC_BIN_BYTES)) {
+        sendError(request, 503, "display busy");
+        return;
+    }
     lastRefreshMillis = millis();
     hasRefreshed = true;
     JsonDocument doc;
@@ -138,7 +142,10 @@ void handleRefresh(AsyncWebServerRequest *request) {
 
 void handleImageBody(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
     if (index == 0) {
-        imageRequestValid = imageBuf != nullptr && total == EPD_13IN3E_FRAIMIC_BIN_BYTES &&
+        // Reject a new image while the display task is still rendering the
+        // previous one — imageBuf can't be safely overwritten mid-refresh.
+        imageRequestValid = imageBuf != nullptr && !display_queue::busy() &&
+                             total == EPD_13IN3E_FRAIMIC_BIN_BYTES &&
                              request->contentType() == "application/octet-stream";
     }
     if (imageRequestValid && index + len <= EPD_13IN3E_FRAIMIC_BIN_BYTES) {
@@ -155,8 +162,10 @@ void handleImageDone(AsyncWebServerRequest *request) {
         sendError(request, 400, "invalid_image_size");
         return;
     }
-
-    EPD_13IN3E_DisplayFraimicBin(imageBuf, EPD_13IN3E_FRAIMIC_BIN_BYTES);
+    if (!display_queue::requestDisplay(imageBuf, EPD_13IN3E_FRAIMIC_BIN_BYTES)) {
+        sendError(request, 503, "display busy");
+        return;
+    }
     hasLastImage = true;
     lastRefreshMillis = millis();
     hasRefreshed = true;
