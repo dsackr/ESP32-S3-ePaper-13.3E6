@@ -13,6 +13,7 @@
 #include "device_config.h"
 #include "device_info.h"
 #include "display_queue.h"
+#include "fraimic_api.h"
 #include "remote_log.h"
 #include "wifi_provisioning.h"
 
@@ -143,7 +144,7 @@ void handlePortal(AsyncWebServerRequest *request) {
     html.reserve(4096);
     html = "<!DOCTYPE html><html lang='en'><head>"
            "<meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-           "<title>Fraimic Portal</title><style>";
+           "<title>DAS2 Portal</title><style>";
     html += CSS;
     html += ".status{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;"
             "background:#F6F4F0;border-radius:12px;padding:10px 16px;margin-bottom:20px;"
@@ -158,7 +159,7 @@ void handlePortal(AsyncWebServerRequest *request) {
             ".tile h2{font-size:14px;font-weight:600;color:#2C2825;margin-bottom:5px}"
             ".tile p{font-size:12px;color:#8C8882;line-height:1.4}"
             "</style></head><body><div class='card'>"
-            "<h1>Fraimic Portal</h1>"
+            "<h1>DAS2 Portal</h1>"
             "<div class='status'>";
 
     html += "<span>WiFi: <span class='";
@@ -180,15 +181,18 @@ void handlePortal(AsyncWebServerRequest *request) {
     html += SVG_UPLOAD;
     html += "</div><h2>Upload</h2><p>Upload a .bin file to display custom artwork</p></a>";
 
-    html += "<a class='tile' href='javascript:void(0)' onclick=\"openHaLink('/config/integrations/integration/fraimic')\">"
-            "<div class='ic'>";
+    html += "<a class='tile' href='/setup'><div class='ic'>";
     html += SVG_PLUS;
     html += "</div><h2>Device Setup</h2><p>Add this frame to Home Assistant</p></a>";
 
-    html += "<a class='tile' href='javascript:void(0)' onclick=\"openHaLink('/fraimic')\">"
-            "<div class='ic'>";
+    // Home Assistant tile — full URL is user-configured (NVS), never a
+    // compile-time path like /fraimic. Empty until the user sets it.
+    html += "<a class='tile' href='javascript:void(0)' onclick=\"openHaLink()\">";
+    html += "<div class='ic'>";
     html += SVG_HOME;
-    html += "</div><h2>Home Assistant</h2><p>Open your Home Assistant dashboard</p></a>";
+    html += "</div><h2>Home Assistant</h2><p>";
+    html += haBase.length() ? "Open your saved Home Assistant link" : "Set your Home Assistant URL";
+    html += "</p></a>";
 
     html += "<a class='tile' href='/logs'><div class='ic'>";
     html += SVG_TERMINAL;
@@ -202,18 +206,19 @@ void handlePortal(AsyncWebServerRequest *request) {
             "<div class='foot'>ESP32-S3-ePaper-13.3E6 &bull; <a href='/info'>Device Information</a></div>"
             "</div>"
             "<script>"
-            "var HA_BASE_URL=\"" + escJ(haBase) +
+            "var HA_URL=\"" + escJ(haBase) +
             "\";"
-            "function openHaLink(path){"
-            "var base=HA_BASE_URL;"
-            "if(base){window.open(base+path,'_blank');return;}"
-            "base=prompt('Enter your Home Assistant base URL (e.g. https://ha.example.com):');"
-            "if(!base)return;"
-            "base=base.replace(/\\/+$/,'');"
+            "function openHaLink(){"
+            "var url=HA_URL;"
+            "if(url){window.open(url,'_blank');return;}"
+            "url=prompt('Enter the full Home Assistant URL to open "
+            "(e.g. https://ha.example.com/digital_frames):');"
+            "if(!url)return;"
+            "url=url.replace(/\\/+$/,'');"
             "fetch('/ha-link/save',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},"
-            "body:'base_url='+encodeURIComponent(base)})"
-            ".then(function(){window.open(base+path,'_blank');})"
-            ".catch(function(){window.open(base+path,'_blank');});"
+            "body:'base_url='+encodeURIComponent(url)})"
+            ".then(function(){HA_URL=url;window.open(url,'_blank');})"
+            ".catch(function(){window.open(url,'_blank');});"
             "}"
             "</script></body></html>";
 
@@ -505,7 +510,7 @@ void handleInfoPage(AsyncWebServerRequest *request) {
     html.reserve(4096);
     html = "<!DOCTYPE html><html lang='en'><head>"
            "<meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-           "<title>Information - Fraimic</title><style>";
+           "<title>Information - DAS2</title><style>";
     html += CSS;
     html += ".pg{padding:0}.pg h1{margin-bottom:20px}"
             ".sec{border:1.5px solid #E8E4DE;border-radius:14px;margin-bottom:16px;overflow:hidden}"
@@ -565,6 +570,72 @@ void handleInfoPage(AsyncWebServerRequest *request) {
 
     request->send(200, "text/html", html);
 }
+void handleSetupPage(AsyncWebServerRequest *request) {
+    // Power policy: wake interval (deep sleep) vs how long to stay online
+    // for HA to notice the frame and push an image. No pull URL.
+    bool always = fraimic_api::isAlwaysOn();
+    uint32_t sleepMin = fraimic_api::getSleepMinutes();
+    uint32_t activeSec = fraimic_api::getActiveWindowSec();
+    String haBase = loadHaBaseUrl();
+
+    String html;
+    html.reserve(3600);
+    html = String("<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'>"
+                  "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+                  "<title>Device Setup - DAS2</title><style>") +
+           CSS +
+           String(".row{display:flex;justify-content:space-between;align-items:center;"
+                  "gap:12px;margin-bottom:12px;font-size:14px}"
+                  ".lbl{color:#4C4742;font-weight:600;flex:1}"
+                  ".val{flex:1;text-align:right}"
+                  ".val input[type=number]{width:100%;max-width:120px;text-align:right}"
+                  ".hint-box{background:#F6F4F0;border-radius:12px;padding:12px 14px;"
+                  "font-size:12px;color:#5C5752;line-height:1.45;margin-bottom:16px}"
+                  "</style></head><body><div class='card'><h1>Device Setup</h1>"
+                  "<p class='sub'>Battery wake cycle &amp; optional HA link</p>"
+                  "<div class='hint-box'>This frame is a <b>push-only</b> endpoint: "
+                  "Home Assistant POSTs images when you are online. "
+                  "Wake interval trades battery life against how quickly a queued "
+                  "image can be delivered after you come back on Wi‑Fi.</div>");
+
+    html += "<form method='POST' action='/sleepconfig'>";
+    html += "<div class='row'><span class='lbl'>Always on (never sleep)</span><span class='val'>"
+            "<input type='checkbox' name='always_on' value='1'";
+    if (always) html += " checked";
+    html += "></span></div>";
+
+    html += "<div class='row'><span class='lbl'>Wake interval (minutes)</span><span class='val'>"
+            "<input type='number' name='minutes' min='1' max='10080' value='";
+    html += String(sleepMin);
+    html += "'></span></div>";
+
+    html += "<div class='row'><span class='lbl'>Stay awake (seconds)</span><span class='val'>"
+            "<input type='number' name='active_sec' min='30' max='3600' value='";
+    html += String(activeSec);
+    html += "'></span></div>";
+
+    html += "<button type='submit' class='btn'>Save power settings</button>";
+    html += "</form>";
+
+    html += "<form method='POST' action='/ha-link/save' style='margin-top:22px'>";
+    html += "<input type='hidden' name='next' value='portal'>";
+    html += "<div class='group'><label>Home Assistant link (optional)</label>"
+            "<input type='text' name='base_url' placeholder='https://ha.example.com/digital_frames' value='";
+    // Attribute-escape quotes in saved URL
+    for (size_t i = 0; i < haBase.length(); i++) {
+        char c = haBase[i];
+        if (c == '"') html += "&quot;";
+        else html += c;
+    }
+    html += "'></div>";
+    html += "<button type='submit' class='btn'>Save HA link</button>";
+    html += "</form>";
+    html += "<div class='hint'>Leave blank and save to clear. Used only by the portal tile — "
+            "not for image delivery.</div>";
+    html += "<a class='back' href='/portal'>Portal</a></div></body></html>";
+    request->send(200, "text/html", html);
+}
+
 
 // ============================================================
 // GET /logs + GET /logs.raw — live device log viewer. RAM ring buffer
@@ -576,7 +647,7 @@ void handleLogsPage(AsyncWebServerRequest *request) {
     html.reserve(2600);
     html = "<!DOCTYPE html><html lang='en'><head>"
            "<meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-           "<title>Device Logs - Fraimic</title><style>";
+           "<title>Device Logs - DAS2</title><style>";
     html += CSS;
     html += ".pg{padding:0}"
             "#logbox{background:#1E1C19;color:#D8D4CC;border-radius:12px;padding:14px;"
@@ -626,7 +697,7 @@ void handleOtaPage(AsyncWebServerRequest *request) {
     html.reserve(3200);
     html = "<!DOCTYPE html><html lang='en'><head>"
            "<meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-           "<title>Firmware Update - Fraimic</title><style>";
+           "<title>Firmware Update - DAS2</title><style>";
     html += CSS;
     html += ".drop{border:2px dashed #DDD8D0;border-radius:12px;padding:22px 16px;text-align:center;"
             "cursor:pointer;transition:border .2s,background .2s}"
@@ -737,16 +808,34 @@ void handleOtaDone(AsyncWebServerRequest *request) {
     if (ok) restartSoon();
 }
 
-// POST /ha-link/save — stores the Home Assistant base URL the user typed
-// in when they first clicked a HA tile with none configured yet (see
-// handlePortal()'s openHaLink()). Once saved, those tiles link straight
-// there without prompting again.
+// POST /ha-link/save — stores the optional Home Assistant URL for the
+// portal tile (full URL including path, user-chosen). Empty clears it.
+// Not used for image delivery (push-only).
+// Optional form field next=setup|portal redirects after save (HTML forms).
+// Portal tile fetch omits next and expects JSON.
 void handleHaLinkSave(AsyncWebServerRequest *request) {
-    if (!request->hasParam("base_url", true) || request->getParam("base_url", true)->value().isEmpty()) {
-        request->send(400, "application/json", "{\"error\":\"missing base_url\"}");
+    String url;
+    if (request->hasParam("base_url", true)) {
+        url = request->getParam("base_url", true)->value();
+    }
+    url.trim();
+    if (url.isEmpty()) {
+        Preferences prefs;
+        prefs.begin(kHaPrefsNamespace, false);
+        prefs.remove("base_url");
+        prefs.end();
+    } else {
+        saveHaBaseUrl(url);
+    }
+
+    String next;
+    if (request->hasParam("next", true)) {
+        next = request->getParam("next", true)->value();
+    }
+    if (next == "setup" || next == "portal") {
+        request->redirect(next == "setup" ? "/setup" : "/portal");
         return;
     }
-    saveHaBaseUrl(request->getParam("base_url", true)->value());
     request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
@@ -806,6 +895,7 @@ void begin(AsyncWebServer &server) {
 
     server.on("/upload", HTTP_GET, handleUploadPage);
     server.on("/upload", HTTP_POST, handleUploadDone, handleUploadFile);
+    server.on("/setup", HTTP_GET, handleSetupPage);
 
     server.on("/info", HTTP_GET, handleInfoPage);
 
@@ -817,6 +907,18 @@ void begin(AsyncWebServer &server) {
 
     server.on("/beep", HTTP_POST, handleBeep);
     server.on("/mic-test", HTTP_POST, handleMicTest);
+
+    // POST /api/panel-test — master=RED, slave=BLUE. Confirms dual-IC path.
+    server.on("/api/panel-test", HTTP_POST, [](AsyncWebServerRequest *request) {
+        if (!display_queue::requestHalfColorTest()) {
+            request->send(503, "application/json", "{\"error\":\"display busy\"}");
+            return;
+        }
+        request->send(200, "application/json",
+                      "{\"status\":\"half_color_test\","
+                      "\"master_left\":\"red\",\"slave_right\":\"blue\","
+                      "\"note\":\"ribbon at bottom: left=red right=blue if both ICs work\"}");
+    });
 
     server.on("/ha-link/save", HTTP_POST, handleHaLinkSave);
 }

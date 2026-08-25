@@ -34,11 +34,16 @@ void EPD_13IN3E_Display(const UBYTE *image);
 // Push a Fraimic-format .bin buffer directly: EPD_13IN3E_FRAIMIC_BIN_BYTES
 // bytes, laid out as ALL master/left-half rows (cols 0-599, packed 2px/byte)
 // followed by ALL slave/right-half rows (cols 600-1199) — see
-// fraimic_bin_converter's generate_binary_file(). This is exactly the byte
-// order EPD_13IN3E_Display already streams to each chip-select, so no
-// reshaping is needed; we just split the buffer in two and stream each half.
-void EPD_13IN3E_DisplayFraimicBin(const uint8_t *bin_data, size_t len);
+// fraimic_bin_converter's generate_binary_file(). This board is mounted
+// ribbon-at-top (180° from Waveshare's reference), so this rotates both
+// halves' content 180° in place before streaming — see the .cpp for why
+// that requires mutable, not const, data.
+void EPD_13IN3E_DisplayFraimicBin(uint8_t *bin_data, size_t len);
 
 // Diagnostic-only: fills the panel with 6 horizontal color bars. Useful for
 // verifying the panel/wiring during bring-up.
 void EPD_13IN3E_Show6Block(void);
+
+// Diagnostic: master/left half solid RED, slave/right half solid BLUE
+// (ribbon at bottom). Confirms both ICs accept a full data load.
+void EPD_13IN3E_ShowHalfColors(void);

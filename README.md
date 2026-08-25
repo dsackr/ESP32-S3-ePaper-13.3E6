@@ -29,7 +29,8 @@ codec) instead of re-deriving them against raw IDF — see `NOTICE.md`.
 | Microphone (ES7210) | Working — confirmed on real hardware via `POST /mic-test`, which reports amplitude stats (min/max/RMS) from a live capture rather than just init success |
 | Battery percentage | ADC-based estimate; **verify `kDividerRatio` in `src/battery.cpp` against a multimeter** |
 | Charging / cable-connected status | Not wired up — no confirmed ETA6098 status line found in the docs reviewed so far |
-| `device_type` / `firmware_version` strings | Placeholders in `include/device_info.h` — swap in real Fraimic values if you can capture them from genuine hardware |
+| `device_type` / `firmware_version` / `vendor` strings | Identifies as vendor `DAS2`, firmware `DAS2.13-3.DIY.xxx` (see `include/device_info.h`) — no longer pretends to be a genuine Fraimic frame |
+| Scheduled daily wake (`GET`/`POST /api/wake-schedule`) | Implemented — device syncs UTC time via NTP once WiFi is up; the setter converts caller-local hour/minute + UTC offset to UTC once and stores only that, so wake calculations are always plain UTC-vs-NTP with no on-device DST/timezone logic |
 
 ## Building
 

@@ -18,9 +18,11 @@ bool busy();
 
 // Queues bin_data (length len) for display on the dedicated task. Returns
 // false without queuing anything if a refresh is already in progress.
-// bin_data must stay valid and unmodified until the refresh completes —
-// safe for the long-lived heap buffers callers already keep for this
-// purpose (see fraimic_api.cpp / web_portal.cpp).
+// Copies into an internal PSRAM buffer immediately, so the caller may reuse
+// or overwrite its buffer as soon as this returns.
 bool requestDisplay(const uint8_t *bin_data, size_t len);
+
+// Diagnostic: paint master/left RED and slave/right BLUE.
+bool requestHalfColorTest();
 
 }  // namespace display_queue

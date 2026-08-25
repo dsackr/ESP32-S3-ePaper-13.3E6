@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <ESPAsyncWebServer.h>
+#include <ArduinoOTA.h>
 #include <ESPmDNS.h>
 #include <WiFi.h>
 
@@ -55,12 +56,42 @@ void setup() {
         MDNS.addService("http", "tcp", 80);
     }
 
+    // Keep radio awake for large image uploads and HA pull fetches.
+    WiFi.setSleep(false);
+
+  // ====================
+  // OTA update support
+  // ====================
+  ArduinoOTA.setHostname(mdnsHostname);
+  ArduinoOTA.onStart([]() {
+    Log.println("[OTA] Start");
+  });
+  ArduinoOTA.onEnd([]() {
+    Log.println("[OTA] End");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Log.printf("[OTA] Progress: %u%%\r\n", (progress * 100) / total);
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Log.printf("[OTA] Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Log.println("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) Log.println("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) Log.println("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) Log.println("Receive Failed");
+    else if (error == OTA_END_ERROR) Log.println("End Failed");
+  });
+  ArduinoOTA.begin();
+
     fraimic_api::begin(server);
     web_portal::begin(server);
     server.begin();
 }
 
 void loop() {
-    // ESPAsyncWebServer handles requests on its own task; nothing to do here.
-    delay(1000);
+    // Battery wake cycle: stay online for active_window_sec, then deep-sleep
+    // for sleep_minutes (unless always_on). Image delivery is push-only
+    // (HA POST /api/image). ESPAsyncWebServer needs no polling of its own.
+    fraimic_api::loop();
+    ArduinoOTA.handle();
+    delay(200);
 }
