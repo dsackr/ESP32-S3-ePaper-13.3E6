@@ -26,6 +26,7 @@ constexpr size_t EPD_13IN3E_FRAIMIC_BIN_BYTES = EPD_13IN3E_HALF_BYTES * 2;      
 void EPD_13IN3E_Init(void);
 void EPD_13IN3E_Clear(UBYTE color);
 void EPD_13IN3E_Sleep(void);
+void EPD_13IN3E_PowerOff(void);
 
 // Push a standard row-interleaved framebuffer (as produced by GUI_Paint-style
 // drawing code): EPD_13IN3E_HEIGHT rows of EPD_13IN3E_WIDTH/2 bytes each.

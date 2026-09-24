@@ -9,10 +9,16 @@
 #include <time.h>
 
 #include "EPD_13in3e.h"
+#include <driver/gpio.h>
+#include <driver/rtc_io.h>
+
+#include "DEV_Config.h"
+#include "audio.h"
 #include "battery.h"
 #include "device_config.h"
 #include "device_info.h"
 #include "display_queue.h"
+#include "pins.h"
 #include "remote_log.h"
 
 // Endpoint set and JSON shapes mirror the stock Fraimic REST API plus the
@@ -205,16 +211,43 @@ void doRestart() { ESP.restart(); }
 
 void enterDeepSleepForSeconds(uint64_t seconds) {
     if (seconds < 10) seconds = 10;
-    pinMode(kBootButtonPin, INPUT_PULLUP);
+
+    Log.println("SLEEP: shutting down peripherals...");
+
+    // Put e-paper controllers to sleep and cut 3V3_OUT power rail
+    EPD_13IN3E_PowerOff();
+
+    // Ensure audio PA is disabled
+    audio::setAmpEnabled(false);
+
+    // Hold power-control pins LOW during deep sleep so rails stay off
+    gpio_hold_en((gpio_num_t)EPD_PWR_PIN);
+    gpio_hold_en((gpio_num_t)PIN_PA_ENABLE);
+    gpio_deep_sleep_hold_en();
+
+    // Graceful Wi-Fi shutdown
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    delay(50);
+
     // Timer wake = next "check-in window" for HA push / device_tracker.
     uint64_t us = seconds * 1000000ULL;
     esp_sleep_enable_timer_wakeup(us);
-    esp_sleep_enable_ext0_wakeup((gpio_num_t)kBootButtonPin, 0 /* wake on LOW */);
-    Log.printf("SLEEP: deep sleep %llus (timer + BOOT button).\n", (unsigned long long)seconds);
+
+    // Configure RTC IO for BOOT button (GPIO0) with pull-up sustained in sleep
+    rtc_gpio_init(GPIO_NUM_0);
+    rtc_gpio_set_direction(GPIO_NUM_0, RTC_GPIO_MODE_INPUT_ONLY);
+    rtc_gpio_pullup_en(GPIO_NUM_0);
+    rtc_gpio_pulldown_dis(GPIO_NUM_0);
+    esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0 /* wake on LOW */);
+
+    Log.printf("SLEEP: deep sleep %llus (timer + BOOT button). Display power rail OFF.\n",
+               (unsigned long long)seconds);
     Log.flush();
     delay(50);
     esp_deep_sleep_start();
 }
+
 
 void enterDeepSleep(uint32_t minutes) {
     if (minutes < 1) minutes = 1;
@@ -664,6 +697,14 @@ void begin(AsyncWebServer &server) {
 void loop() {
     if (alwaysOn || sleepArmed) return;
     if (display_queue::busy() || showTaskRunning) return;
+
+    // Power policy: if plugged in (charging or powered by cable), stay awake!
+    battery::Status bat = battery::read();
+    if (bat.cable_connected || bat.charging) {
+        extendAwakeWindow();
+        return;
+    }
+
     if ((int32_t)(millis() - awakeUntilMs) < 0) return;
 
     // Active window expired — deep sleep until next wake.

@@ -1,4 +1,5 @@
 #include "DEV_Config.h"
+#include <driver/gpio.h>
 
 static void GPIO_Config(void) {
     pinMode(EPD_BUSY_PIN, INPUT);
@@ -21,7 +22,9 @@ void GPIO_Mode(UWORD pin, UWORD mode) {
 }
 
 UBYTE DEV_Module_Init(void) {
+    gpio_hold_dis((gpio_num_t)EPD_PWR_PIN);
     GPIO_Config();
+    delay(20);  // Allow 3V3_OUT from DC-DC buck converter to stabilize
     return 0;
 }
 
@@ -46,4 +49,10 @@ void DEV_SPI_Write_nByte(const UBYTE *data, UDOUBLE len) {
 void DEV_Module_Exit(void) {
     digitalWrite(EPD_PWR_PIN, LOW);
     digitalWrite(EPD_RST_PIN, LOW);
+    digitalWrite(EPD_DC_PIN, LOW);
+    digitalWrite(EPD_CS_M_PIN, LOW);
+    digitalWrite(EPD_CS_S_PIN, LOW);
+    digitalWrite(EPD_SCK_PIN, LOW);
+    digitalWrite(EPD_MOSI_PIN, LOW);
 }
+

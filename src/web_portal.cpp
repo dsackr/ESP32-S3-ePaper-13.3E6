@@ -164,8 +164,9 @@ void handlePortal(AsyncWebServerRequest *request) {
 
     html += "<span>WiFi: <span class='";
     html += conn ? "ok'>Connected" : "bad'>Disconnected";
-    html += "</span></span><span>Mode: Normal</span>";
-    if (bat.charging) html += "<span>&#x26A1; ";
+    html += "</span></span>";
+    if (bat.charging) html += "<span>&#x26A1; Charging ";
+    else if (bat.cable_connected) html += "<span>&#x26A1; Plugged In ";
     else html += "<span>";
     char buf[24];
     snprintf(buf, sizeof(buf), "%.2fV (%d%%)", bat.voltage_mv / 1000.0f, bat.percent);
@@ -547,7 +548,8 @@ void handleInfoPage(AsyncWebServerRequest *request) {
             "%</span></div>";
     html += "<div class='row'><span class='lbl'>Status</span><span class='val'>";
     if (bat.charging) html += "<span class='badge ok'>Charging</span>";
-    else html += "<span class='badge warn'>Not Charging</span>";
+    else if (bat.cable_connected) html += "<span class='badge ok'>Plugged In</span>";
+    else html += "<span class='badge warn'>On Battery</span>";
     html += "</span></div>";
     html += "<div class='row'><span class='lbl'>Data Source</span><span class='val'>ADC (resistor divider)</span></div>";
     html += "</div>";
@@ -839,47 +841,15 @@ void handleHaLinkSave(AsyncWebServerRequest *request) {
     request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
-// POST /beep — speaker smoke test, not part of any Fraimic-compatible
-// behavior. Blocks the async worker task for the tone's duration, so keep
-// it short; fine for an occasional manual trigger.
+// POST /beep and POST /mic-test — audio hardware is disabled for low-power operation
 void handleBeep(AsyncWebServerRequest *request) {
-    audio::beep(1000, 300);
-    request->send(200, "application/json", "{\"status\":\"ok\"}");
+    request->send(200, "application/json", "{\"status\":\"disabled\",\"message\":\"Audio disabled for low-power operation\"}");
 }
 
-// POST /mic-test — records ~1s and reports amplitude stats instead of just
-// a pass/fail, since the ES7210 hasn't been cross-checked on this board
-// (see README). All-zero/flat output across repeated calls with the mic
-// making noise nearby means it's not really capturing anything even if
-// isMicReady() came back true. Blocks the async worker task for ~1s.
 void handleMicTest(AsyncWebServerRequest *request) {
-    const size_t kSamples = audio::kSampleRateHz;  // ~1 second
-    int16_t *buf = (int16_t *)malloc(kSamples * sizeof(int16_t));
-    if (!buf) {
-        request->send(500, "application/json", "{\"error\":\"no memory\"}");
-        return;
-    }
-
-    size_t got = audio::recordPcm(buf, kSamples);
-
-    int16_t minV = 0, maxV = 0;
-    double sumSq = 0;
-    for (size_t i = 0; i < got; i++) {
-        if (i == 0 || buf[i] < minV) minV = buf[i];
-        if (i == 0 || buf[i] > maxV) maxV = buf[i];
-        sumSq += (double)buf[i] * buf[i];
-    }
-    double rms = got ? sqrt(sumSq / got) : 0;
-
-    char json[192];
-    snprintf(json, sizeof(json),
-             "{\"mic_ready\":%s,\"samples_requested\":%u,\"samples_received\":%u,"
-             "\"min\":%d,\"max\":%d,\"rms\":%.1f}",
-             audio::isMicReady() ? "true" : "false", (unsigned)kSamples, (unsigned)got, minV, maxV, rms);
-    free(buf);
-
-    request->send(200, "application/json", json);
+    request->send(200, "application/json", "{\"status\":\"disabled\",\"message\":\"Audio disabled for low-power operation\"}");
 }
+
 
 }  // namespace
 

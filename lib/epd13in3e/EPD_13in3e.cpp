@@ -377,3 +377,9 @@ void EPD_13IN3E_Sleep(void) {
     SendData(0xA5);
     CS_ALL(1);
 }
+
+void EPD_13IN3E_PowerOff(void) {
+    EPD_13IN3E_Sleep();
+    DEV_Delay_ms(50);
+    DEV_Module_Exit();
+}
