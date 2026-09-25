@@ -23,4 +23,8 @@ uint32_t getActiveWindowSec();
 // Reset the "stay awake" deadline so HA has time to push after activity.
 void noteActivity();
 
+// Gracefully shuts down peripherals (powers off EPD rail, disables audio PA,
+// disconnects WiFi, arms timer + BOOT button wake) and enters deep sleep.
+void enterDeepSleepForSeconds(uint64_t seconds);
+
 }  // namespace fraimic_api

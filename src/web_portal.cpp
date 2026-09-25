@@ -14,6 +14,7 @@
 #include "device_info.h"
 #include "display_queue.h"
 #include "fraimic_api.h"
+#include "low_battery.h"
 #include "remote_log.h"
 #include "wifi_provisioning.h"
 
@@ -551,6 +552,10 @@ void handleInfoPage(AsyncWebServerRequest *request) {
     else if (bat.cable_connected) html += "<span class='badge ok'>Plugged In</span>";
     else html += "<span class='badge warn'>On Battery</span>";
     html += "</span></div>";
+    html += "<div class='row'><span class='lbl'>Low Bat Warning</span><span class='val'>";
+    if (low_battery::wasDisplayed()) html += "<span class='badge warn'>Displayed</span>";
+    else html += "<span class='badge ok'>Ready (&le;5%)</span>";
+    html += "</span></div>";
     html += "<div class='row'><span class='lbl'>Data Source</span><span class='val'>ADC (resistor divider)</span></div>";
     html += "</div>";
 
@@ -568,7 +573,28 @@ void handleInfoPage(AsyncWebServerRequest *request) {
     }
     html += "</div>";
 
-    html += "<a class='back' href='/portal'>Portal</a></div></body></html>";
+    html += "<div class='sec'><div class='sec-hd'>DIAGNOSTICS & ACTIONS</div>";
+    html += "<div class='row'><span class='lbl'>Low Battery Screen</span><span class='val'>"
+            "<button type='button' class='btn' style='padding:6px 14px;font-size:12px;margin:0' onclick='testLowBat()'>Preview (~33s)</button>"
+            "</span></div>";
+    html += "<div class='row'><span class='lbl'>Dual-IC Panel Test</span><span class='val'>"
+            "<button type='button' class='btn' style='padding:6px 14px;font-size:12px;margin:0' onclick='testPanel()'>Half Colors (~33s)</button>"
+            "</span></div>";
+    html += "</div>";
+
+    html += "<a class='back' href='/portal'>Portal</a></div>"
+            "<script>"
+            "function testLowBat(){"
+            "if(!confirm('Display the low battery warning screen on the panel now (~33s)?'))return;"
+            "fetch('/api/test-low-battery',{method:'POST'}).then(r=>r.json()).then(d=>alert('Low battery screen refresh started!'))"
+            ".catch(e=>alert('Error: '+e));"
+            "}"
+            "function testPanel(){"
+            "if(!confirm('Run half color test on the panel (~33s)?'))return;"
+            "fetch('/api/panel-test',{method:'POST'}).then(r=>r.json()).then(d=>alert('Half color test started!'))"
+            ".catch(e=>alert('Error: '+e));"
+            "}"
+            "</script></body></html>";
 
     request->send(200, "text/html", html);
 }

@@ -18,6 +18,7 @@
 #include "device_config.h"
 #include "device_info.h"
 #include "display_queue.h"
+#include "low_battery.h"
 #include "pins.h"
 #include "remote_log.h"
 
@@ -209,6 +210,8 @@ void deferredAction(void (*action)()) {
 
 void doRestart() { ESP.restart(); }
 
+}  // namespace
+
 void enterDeepSleepForSeconds(uint64_t seconds) {
     if (seconds < 10) seconds = 10;
 
@@ -248,6 +251,7 @@ void enterDeepSleepForSeconds(uint64_t seconds) {
     esp_deep_sleep_start();
 }
 
+namespace {
 
 void enterDeepSleep(uint32_t minutes) {
     if (minutes < 1) minutes = 1;
@@ -400,6 +404,7 @@ void handleInfo(AsyncWebServerRequest *request) {
     batteryObj["adc_raw"] = bat.adc_raw;
     batteryObj["charging"] = bat.charging;
     batteryObj["cable_connected"] = bat.cable_connected;
+    batteryObj["low_battery_shown"] = low_battery::wasDisplayed();
 
     JsonObject device = doc["device"].to<JsonObject>();
     device["registered"] = false;
@@ -462,6 +467,21 @@ void handleBattery(AsyncWebServerRequest *request) {
     doc["adc_raw"] = bat.adc_raw;
     doc["charging"] = bat.charging;
     doc["cable_connected"] = bat.cable_connected;
+    doc["low_battery_shown"] = low_battery::wasDisplayed();
+    sendJson(request, 200, doc);
+}
+
+void handleTestLowBattery(AsyncWebServerRequest *request) {
+    if (display_queue::busy()) {
+        sendError(request, 503, "display_busy");
+        return;
+    }
+    xTaskCreate([](void *) {
+        low_battery::showScreen();
+        vTaskDelete(nullptr);
+    }, "low_bat_test", 4096, nullptr, 1, nullptr);
+    JsonDocument doc;
+    doc["status"] = "refreshing_low_battery";
     sendJson(request, 200, doc);
 }
 
@@ -681,6 +701,7 @@ void begin(AsyncWebServer &server) {
     server.on("/pullurl", HTTP_POST, handlePullUrl);
     server.on("/api/wake-schedule", HTTP_GET, handleGetWakeSchedule);
     server.on("/api/wake-schedule", HTTP_POST, handleSetWakeSchedule);
+    server.on("/api/test-low-battery", HTTP_POST, handleTestLowBattery);
 
     beginNtpSync();
     extendAwakeWindow();
@@ -695,6 +716,9 @@ void begin(AsyncWebServer &server) {
 }
 
 void loop() {
+    // Check low battery condition (triggers warning screen and sleep if <= 5% on battery)
+    if (low_battery::checkAndHandle()) return;
+
     if (alwaysOn || sleepArmed) return;
     if (display_queue::busy() || showTaskRunning) return;
 

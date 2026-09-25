@@ -13,6 +13,7 @@
 #include "battery.h"
 #include "display_queue.h"
 #include "fraimic_api.h"
+#include "low_battery.h"
 #include "pins.h"
 #include "remote_log.h"
 #include "sd_card.h"
@@ -53,6 +54,9 @@ void setup() {
     DEV_Module_Init();
     EPD_13IN3E_Init();
     display_queue::begin();
+
+    // Check low battery condition: if on battery and <= 5%, displays warning screen and deep sleeps
+    low_battery::checkAndHandle();
 
     if (!sd_card::init()) {
         Log.println("SD card not mounted (continuing without it)");
