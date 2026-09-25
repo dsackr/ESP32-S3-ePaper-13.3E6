@@ -432,11 +432,10 @@ void handleInfo(AsyncWebServerRequest *request) {
     settings["voice_recording"] = false;
     settings["keep_awake"] = alwaysOn;
 
-    bool portrait = (displayOrientation != "landscape");
     JsonObject display = doc["display"].to<JsonObject>();
     display["device_type"] = kDeviceType;
-    display["width_px"] = portrait ? kDisplayWidthPx : kDisplayHeightPx;
-    display["height_px"] = portrait ? kDisplayHeightPx : kDisplayWidthPx;
+    display["width_px"] = kDisplayWidthPx;
+    display["height_px"] = kDisplayHeightPx;
     display["orientation"] = displayOrientation;
     if (hasRefreshed) {
         display["last_refresh"] = (double)lastRefreshMillis / 1000.0;
