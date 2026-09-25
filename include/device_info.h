@@ -6,7 +6,7 @@ namespace device_info {
 
 // Bump the trailing build number each time firmware code changes.
 constexpr const char *kVendor = "DAS2";
-constexpr const char *kFirmwareVersion = "DAS2.13-3.DIY.002";
+constexpr const char *kFirmwareVersion = "DAS2.13-3.DIY.003";
 constexpr const char *kDeviceType = "13.3\" E-Ink";
 
 }  // namespace device_info

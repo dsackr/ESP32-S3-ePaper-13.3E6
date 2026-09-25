@@ -4,91 +4,101 @@ import sys
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-W, H = 1200, 1600
-img = Image.new('RGB', (W, H), (255, 255, 255))
-draw = ImageDraw.Draw(img)
+def draw_canvas(width, height, is_portrait):
+    img = Image.new('RGB', (width, height), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
 
-try:
-    font_large = ImageFont.truetype('/System/Library/Fonts/Helvetica.ttc', 88)
-    font_sub = ImageFont.truetype('/System/Library/Fonts/Helvetica.ttc', 44)
-except Exception:
-    font_large = ImageFont.load_default()
-    font_sub = ImageFont.load_default()
+    try:
+        font_large = ImageFont.truetype('/System/Library/Fonts/Helvetica.ttc', 88 if is_portrait else 80)
+        font_sub = ImageFont.truetype('/System/Library/Fonts/Helvetica.ttc', 44 if is_portrait else 40)
+    except Exception:
+        font_large = ImageFont.load_default()
+        font_sub = ImageFont.load_default()
 
-# Vertical battery icon dimensions
-bx0, by0 = 380, 380
-bx1, by1 = 820, 1020
-bw = 28  # border width
+    if is_portrait: # 1200x1600
+        bx0, by0 = 380, 380
+        bx1, by1 = 820, 1020
+        bw = 28
+        tx0, ty0 = 520, by0 - 45
+        tx1, ty1 = 680, by0
+        fill_h = 80
+        ex_cx = (bx0 + bx1) // 2
+        draw.rectangle([tx0, ty0, tx1, ty1], fill=(0, 0, 0))
+        draw.rectangle([bx0, by0, bx1, by1], fill=(0, 0, 0))
+        draw.rectangle([bx0 + bw, by0 + bw, bx1 - bw, by1 - bw], fill=(255, 255, 255))
+        draw.rectangle([bx0 + bw + 12, by1 - bw - fill_h, bx1 - bw - 12, by1 - bw - 12], fill=(220, 0, 0))
+        draw.rounded_rectangle([ex_cx - 20, by0 + 130, ex_cx + 20, by0 + 360], radius=16, fill=(220, 0, 0))
+        draw.ellipse([ex_cx - 22, by0 + 400, ex_cx + 22, by0 + 444], fill=(220, 0, 0))
+        draw.text((width // 2, 1150), 'LOW BATTERY', fill=(0, 0, 0), font=font_large, anchor='mm')
+        draw.text((width // 2, 1235), 'Please connect charger to continue', fill=(0, 0, 0), font=font_sub, anchor='mm')
+    else: # 1600x1200
+        bx0, by0 = 620, 240
+        bx1, by1 = 980, 800
+        bw = 28
+        tx0, ty0 = 730, by0 - 45
+        tx1, ty1 = 870, by0
+        fill_h = 80
+        ex_cx = (bx0 + bx1) // 2
+        draw.rectangle([tx0, ty0, tx1, ty1], fill=(0, 0, 0))
+        draw.rectangle([bx0, by0, bx1, by1], fill=(0, 0, 0))
+        draw.rectangle([bx0 + bw, by0 + bw, bx1 - bw, by1 - bw], fill=(255, 255, 255))
+        draw.rectangle([bx0 + bw + 12, by1 - bw - fill_h, bx1 - bw - 12, by1 - bw - 12], fill=(220, 0, 0))
+        draw.rounded_rectangle([ex_cx - 20, by0 + 110, ex_cx + 20, by0 + 310], radius=16, fill=(220, 0, 0))
+        draw.ellipse([ex_cx - 22, by0 + 345, ex_cx + 22, by0 + 389], fill=(220, 0, 0))
+        draw.text((width // 2, 900), 'LOW BATTERY', fill=(0, 0, 0), font=font_large, anchor='mm')
+        draw.text((width // 2, 980), 'Please connect charger to continue', fill=(0, 0, 0), font=font_sub, anchor='mm')
 
-# Terminal at top
-tx0, ty0 = 520, by0 - 45
-tx1, ty1 = 680, by0
-draw.rectangle([tx0, ty0, tx1, ty1], fill=(0, 0, 0))
+    return img
 
-# Outer box
-draw.rectangle([bx0, by0, bx1, by1], fill=(0, 0, 0))
-# Inner hollow
-draw.rectangle([bx0 + bw, by0 + bw, bx1 - bw, by1 - bw], fill=(255, 255, 255))
+def to_fraimic_rle(img_1200x1600):
+    assert img_1200x1600.size == (1200, 1600)
+    img_arr = np.array(img_1200x1600)
+    code_arr = np.ones((1600, 1200), dtype=np.uint8) * 0x1  # default white (0x1)
 
-# Red low-battery level at the bottom
-fill_h = 80
-draw.rectangle([bx0 + bw + 12, by1 - bw - fill_h, bx1 - bw - 12, by1 - bw - 12], fill=(220, 0, 0))
+    is_red = (img_arr[:, :, 0] > 140) & (img_arr[:, :, 1] < 80) & (img_arr[:, :, 2] < 80)
+    code_arr[is_red] = 0x3
+    is_black = (img_arr[:, :, 0] < 180) & (img_arr[:, :, 1] < 180) & (img_arr[:, :, 2] < 180) & ~is_red
+    code_arr[is_black] = 0x0
 
-# Big Red exclamation mark inside the battery
-ex_cx = (bx0 + bx1) // 2
-draw.rounded_rectangle([ex_cx - 20, by0 + 130, ex_cx + 20, by0 + 360], radius=16, fill=(220, 0, 0))
-draw.ellipse([ex_cx - 22, by0 + 400, ex_cx + 22, by0 + 444], fill=(220, 0, 0))
+    # Fraimic binary wire format:
+    # Left half cols 0..599 (packed 2px/byte -> 300 bytes/row)
+    left_half = code_arr[:, 0:600]
+    left_packed = (left_half[:, 0::2] << 4) | left_half[:, 1::2]
+    # Right half cols 600..1199 (packed 2px/byte -> 300 bytes/row)
+    right_half = code_arr[:, 600:1200]
+    right_packed = (right_half[:, 0::2] << 4) | right_half[:, 1::2]
 
-# Text below
-text1 = 'LOW BATTERY'
-text2 = 'Please connect charger to continue'
-draw.text((W // 2, 1150), text1, fill=(0, 0, 0), font=font_large, anchor='mm')
-draw.text((W // 2, 1235), text2, fill=(0, 0, 0), font=font_sub, anchor='mm')
+    bin_data = np.concatenate([left_packed.flatten(), right_packed.flatten()]).tobytes()
+    assert len(bin_data) == 960000, f"Expected 960000 bytes, got {len(bin_data)}"
 
-img_arr = np.array(img)
-code_arr = np.ones((H, W), dtype=np.uint8) * 0x1  # default white (0x1)
+    # RLE compression
+    rle_data = bytearray()
+    i = 0
+    n = len(bin_data)
+    runs = 0
+    while i < n:
+        val = bin_data[i]
+        run_len = 1
+        while i + run_len < n and bin_data[i + run_len] == val and run_len < 65535:
+            run_len += 1
+        rle_data.extend(run_len.to_bytes(2, 'little'))
+        rle_data.append(val)
+        runs += 1
+        i += run_len
 
-# Color matching:
-# Red: 0x3
-is_red = (img_arr[:, :, 0] > 140) & (img_arr[:, :, 1] < 80) & (img_arr[:, :, 2] < 80)
-code_arr[is_red] = 0x3
-# Black: 0x0
-is_black = (img_arr[:, :, 0] < 180) & (img_arr[:, :, 1] < 180) & (img_arr[:, :, 2] < 180) & ~is_red
-code_arr[is_black] = 0x0
+    return rle_data, runs
 
-# Fraimic binary wire format:
-# Left half cols 0..599 (packed 2px/byte -> 300 bytes/row)
-left_half = code_arr[:, 0:600]
-left_packed = (left_half[:, 0::2] << 4) | left_half[:, 1::2]
-# Right half cols 600..1199 (packed 2px/byte -> 300 bytes/row)
-right_half = code_arr[:, 600:1200]
-right_packed = (right_half[:, 0::2] << 4) | right_half[:, 1::2]
+img_p = draw_canvas(1200, 1600, True)
+img_l = draw_canvas(1600, 1200, False)
+# Rotate landscape canvas to native 1200x1600 buffer (ROTATE_270 brings 1600x1200 -> 1200x1600)
+img_l_rot = img_l.transpose(Image.Transpose.ROTATE_270)
 
-bin_data = np.concatenate([left_packed.flatten(), right_packed.flatten()]).tobytes()
-assert len(bin_data) == 960000, f"Expected 960000 bytes, got {len(bin_data)}"
+rle_p, runs_p = to_fraimic_rle(img_p)
+rle_l, runs_l = to_fraimic_rle(img_l_rot)
 
-# RLE compression
-rle_data = bytearray()
-i = 0
-n = len(bin_data)
-runs = 0
-while i < n:
-    val = bin_data[i]
-    run_len = 1
-    while i + run_len < n and bin_data[i + run_len] == val and run_len < 65535:
-        run_len += 1
-    rle_data.extend(run_len.to_bytes(2, 'little'))
-    rle_data.append(val)
-    runs += 1
-    i += run_len
+print(f"Portrait:  {len(rle_p)} bytes across {runs_p} runs")
+print(f"Landscape: {len(rle_l)} bytes across {runs_l} runs")
 
-print(f"Fraimic raw bin size: {len(bin_data)} bytes")
-print(f"RLE compressed size: {len(rle_data)} bytes across {runs} runs")
-
-# Save preview
-img.save('/tmp/low_battery_preview.png')
-
-# Output C++ source file
 output_cpp = os.path.join(os.path.dirname(__file__), '..', 'src', 'low_battery_data.cpp')
 with open(output_cpp, 'w') as f:
     f.write('// Auto-generated by tools/generate_low_battery_asset.py\n')
@@ -97,25 +107,39 @@ with open(output_cpp, 'w') as f:
     f.write('#include <pgmspace.h>\n')
     f.write('#include "low_battery.h"\n\n')
     f.write('namespace low_battery {\n\n')
-    f.write(f'const size_t LOW_BATTERY_RLE_SIZE = {len(rle_data)};\n')
-    f.write('const uint8_t LOW_BATTERY_RLE_DATA[] PROGMEM = {\n')
-    
+
+    # Portrait asset
+    f.write(f'const size_t LOW_BATTERY_PORTRAIT_RLE_SIZE = {len(rle_p)};\n')
+    f.write('const uint8_t LOW_BATTERY_PORTRAIT_RLE_DATA[] PROGMEM = {\n')
     bytes_per_line = 16
-    for idx in range(0, len(rle_data), bytes_per_line):
-        chunk = rle_data[idx:idx + bytes_per_line]
+    for idx in range(0, len(rle_p), bytes_per_line):
+        chunk = rle_p[idx:idx + bytes_per_line]
         hex_str = ', '.join(f'0x{b:02X}' for b in chunk)
-        if idx + bytes_per_line < len(rle_data):
+        if idx + bytes_per_line < len(rle_p):
             hex_str += ','
         f.write(f'    {hex_str}\n')
-    
     f.write('};\n\n')
-    f.write('bool decompressImage(uint8_t *dest, size_t destLen) {\n')
+
+    # Landscape asset
+    f.write(f'const size_t LOW_BATTERY_LANDSCAPE_RLE_SIZE = {len(rle_l)};\n')
+    f.write('const uint8_t LOW_BATTERY_LANDSCAPE_RLE_DATA[] PROGMEM = {\n')
+    for idx in range(0, len(rle_l), bytes_per_line):
+        chunk = rle_l[idx:idx + bytes_per_line]
+        hex_str = ', '.join(f'0x{b:02X}' for b in chunk)
+        if idx + bytes_per_line < len(rle_l):
+            hex_str += ','
+        f.write(f'    {hex_str}\n')
+    f.write('};\n\n')
+
+    f.write('bool decompressImage(uint8_t *dest, size_t destLen, bool portrait) {\n')
     f.write('    if (!dest || destLen < 960000) return false;\n')
+    f.write('    const uint8_t *rleData = portrait ? LOW_BATTERY_PORTRAIT_RLE_DATA : LOW_BATTERY_LANDSCAPE_RLE_DATA;\n')
+    f.write('    const size_t rleSize = portrait ? LOW_BATTERY_PORTRAIT_RLE_SIZE : LOW_BATTERY_LANDSCAPE_RLE_SIZE;\n')
     f.write('    size_t inIdx = 0;\n')
     f.write('    size_t outIdx = 0;\n')
-    f.write('    while (inIdx + 3 <= LOW_BATTERY_RLE_SIZE && outIdx < destLen) {\n')
-    f.write('        uint16_t count = (uint16_t)LOW_BATTERY_RLE_DATA[inIdx] | ((uint16_t)LOW_BATTERY_RLE_DATA[inIdx + 1] << 8);\n')
-    f.write('        uint8_t val = LOW_BATTERY_RLE_DATA[inIdx + 2];\n')
+    f.write('    while (inIdx + 3 <= rleSize && outIdx < destLen) {\n')
+    f.write('        uint16_t count = (uint16_t)rleData[inIdx] | ((uint16_t)rleData[inIdx + 1] << 8);\n')
+    f.write('        uint8_t val = rleData[inIdx + 2];\n')
     f.write('        inIdx += 3;\n')
     f.write('        size_t toWrite = count;\n')
     f.write('        if (outIdx + toWrite > destLen) toWrite = destLen - outIdx;\n')

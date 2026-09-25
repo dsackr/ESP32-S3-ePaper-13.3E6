@@ -36,13 +36,15 @@ bool showScreen() {
         return false;
     }
 
-    if (!decompressImage(buf, EPD_13IN3E_FRAIMIC_BIN_BYTES)) {
+    bool portrait = (fraimic_api::getOrientation() != "landscape");
+    if (!decompressImage(buf, EPD_13IN3E_FRAIMIC_BIN_BYTES, portrait)) {
         Log.println("BAT: Decompression failed for low battery image");
         free(buf);
         return false;
     }
 
-    Log.println("BAT: Refreshing panel with low battery warning image (~33s)...");
+    Log.printf("BAT: Refreshing panel with low battery warning image (%s, ~33s)...\n",
+               portrait ? "portrait" : "landscape");
     EPD_13IN3E_DisplayFraimicBin(buf, EPD_13IN3E_FRAIMIC_BIN_BYTES);
     free(buf);
     Log.println("BAT: Low battery warning image refresh complete.");

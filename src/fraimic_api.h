@@ -20,6 +20,10 @@ bool isAlwaysOn();
 uint32_t getSleepMinutes();
 uint32_t getActiveWindowSec();
 
+// Display orientation ("portrait" or "landscape", persisted in NVS)
+String getOrientation();
+bool setOrientation(const String &orientation);
+
 // Reset the "stay awake" deadline so HA has time to push after activity.
 void noteActivity();
 

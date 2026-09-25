@@ -62,6 +62,7 @@ bool hasRefreshed = false;
 bool alwaysOn = false;
 uint32_t sleepMinutes = 15;
 uint32_t activeWindowSec = 120;
+String displayOrientation = "portrait";
 
 // Scheduled daily wake (persisted in NVS). The device has no wall-clock of
 // its own, so the schedule is stored purely in UTC: whoever sets it (HA,
@@ -104,6 +105,10 @@ void loadPowerConfig() {
     alwaysOn = prefs.getBool("always_on", false);
     sleepMinutes = prefs.getUInt("sleep_min", 15);
     activeWindowSec = prefs.getUInt("active_sec", 120);
+    displayOrientation = prefs.getString("orientation", "portrait");
+    if (displayOrientation != "portrait" && displayOrientation != "landscape") {
+        displayOrientation = "portrait";
+    }
     scheduleEnabled = prefs.getBool("sched_on", false);
     scheduleUtcHour = (uint8_t)prefs.getUInt("sched_uh", 6);
     scheduleUtcMinute = (uint8_t)prefs.getUInt("sched_um", 0);
@@ -133,6 +138,7 @@ void savePowerConfig() {
     prefs.putBool("always_on", alwaysOn);
     prefs.putUInt("sleep_min", sleepMinutes);
     prefs.putUInt("active_sec", activeWindowSec);
+    prefs.putString("orientation", displayOrientation);
     prefs.putBool("sched_on", scheduleEnabled);
     prefs.putUInt("sched_uh", scheduleUtcHour);
     prefs.putUInt("sched_um", scheduleUtcMinute);
@@ -426,11 +432,12 @@ void handleInfo(AsyncWebServerRequest *request) {
     settings["voice_recording"] = false;
     settings["keep_awake"] = alwaysOn;
 
+    bool portrait = (displayOrientation != "landscape");
     JsonObject display = doc["display"].to<JsonObject>();
     display["device_type"] = kDeviceType;
-    display["width_px"] = kDisplayWidthPx;
-    display["height_px"] = kDisplayHeightPx;
-    display["orientation"] = "portrait";
+    display["width_px"] = portrait ? kDisplayWidthPx : kDisplayHeightPx;
+    display["height_px"] = portrait ? kDisplayHeightPx : kDisplayWidthPx;
+    display["orientation"] = displayOrientation;
     if (hasRefreshed) {
         display["last_refresh"] = (double)lastRefreshMillis / 1000.0;
     } else {
@@ -579,6 +586,13 @@ void handleSleepConfig(AsyncWebServerRequest *request) {
         raw.toLowerCase();
         alwaysOn = (raw == "1" || raw == "true" || raw == "on" || raw == "yes");
     }
+    if (request->hasParam("orientation", true)) {
+        String o = request->getParam("orientation", true)->value();
+        o.toLowerCase();
+        if (o == "portrait" || o == "landscape") {
+            displayOrientation = o;
+        }
+    }
     savePowerConfig();
     extendAwakeWindow();
     sleepArmed = false;
@@ -591,6 +605,25 @@ void handleSleepConfig(AsyncWebServerRequest *request) {
     request->send(200, "text/plain", resp);
     Log.printf("Power config: always_on=%d sleep=%umin active=%us (push-only)\n",
                 alwaysOn ? 1 : 0, (unsigned)sleepMinutes, (unsigned)activeWindowSec);
+}
+
+void handleOrientation(AsyncWebServerRequest *request) {
+    if (request->hasParam("orientation", true)) {
+        String o = request->getParam("orientation", true)->value();
+        o.toLowerCase();
+        if (o == "portrait" || o == "landscape") {
+            displayOrientation = o;
+            savePowerConfig();
+            extendAwakeWindow();
+            Log.printf("Orientation: set to %s\n", displayOrientation.c_str());
+            JsonDocument doc;
+            doc["status"] = "ok";
+            doc["orientation"] = displayOrientation;
+            sendJson(request, 200, doc);
+            return;
+        }
+    }
+    sendError(request, 400, "invalid orientation");
 }
 
 void handleGetWakeSchedule(AsyncWebServerRequest *request) {
@@ -701,6 +734,7 @@ void begin(AsyncWebServer &server) {
     server.on("/pullurl", HTTP_POST, handlePullUrl);
     server.on("/api/wake-schedule", HTTP_GET, handleGetWakeSchedule);
     server.on("/api/wake-schedule", HTTP_POST, handleSetWakeSchedule);
+    server.on("/api/orientation", HTTP_POST, handleOrientation);
     server.on("/api/test-low-battery", HTTP_POST, handleTestLowBattery);
 
     beginNtpSync();
@@ -709,9 +743,10 @@ void begin(AsyncWebServer &server) {
     const char *causeStr = "reset";
     if (cause == ESP_SLEEP_WAKEUP_TIMER) causeStr = "timer";
     else if (cause == ESP_SLEEP_WAKEUP_EXT0) causeStr = "button";
-    Log.printf("Power: always_on=%d sleep=%umin active=%us schedule=%d(%02u:%02uZ) delivery=push wake=%s\n",
+    Log.printf("Power: always_on=%d sleep=%umin active=%us schedule=%d(%02u:%02uZ) orient=%s delivery=push wake=%s\n",
                 alwaysOn ? 1 : 0, (unsigned)sleepMinutes, (unsigned)activeWindowSec,
                 scheduleEnabled ? 1 : 0, (unsigned)scheduleUtcHour, (unsigned)scheduleUtcMinute,
+                displayOrientation.c_str(),
                 causeStr);
 }
 
@@ -753,6 +788,17 @@ void loop() {
 bool isAlwaysOn() { return alwaysOn; }
 uint32_t getSleepMinutes() { return sleepMinutes; }
 uint32_t getActiveWindowSec() { return activeWindowSec; }
+
+String getOrientation() { return displayOrientation; }
+bool setOrientation(const String &orientation) {
+    if (orientation == "portrait" || orientation == "landscape") {
+        displayOrientation = orientation;
+        savePowerConfig();
+        extendAwakeWindow();
+        return true;
+    }
+    return false;
+}
 
 void noteActivity() { extendAwakeWindow(); }
 

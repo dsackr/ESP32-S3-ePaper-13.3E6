@@ -532,6 +532,11 @@ void handleInfoPage(AsyncWebServerRequest *request) {
     html += "<div class='row'><span class='lbl'>Device Type</span><span class='val'>";
     html += device_info::kDeviceType;
     html += "</span></div>";
+    bool portrait = (fraimic_api::getOrientation() != "landscape");
+    html += "<div class='row'><span class='lbl'>Resolution</span><span class='val'>" +
+            String(portrait ? "1200 &times; 1600" : "1600 &times; 1200") + "</span></div>";
+    html += "<div class='row'><span class='lbl'>Orientation</span><span class='val'>" +
+            String(portrait ? "Portrait" : "Landscape") + "</span></div>";
     html += "<div class='row'><span class='lbl'>MAC Address</span><span class='val'>..." +
             mac.substring(mac.length() - 8) + "</span></div>";
     html += "<div class='row'><span class='lbl'>Device Key</span><span class='val'>..." +
@@ -626,11 +631,19 @@ void handleSetupPage(AsyncWebServerRequest *request) {
                   "Wake interval trades battery life against how quickly a queued "
                   "image can be delivered after you come back on Wi‑Fi.</div>");
 
+    String orient = fraimic_api::getOrientation();
+
     html += "<form method='POST' action='/sleepconfig'>";
     html += "<div class='row'><span class='lbl'>Always on (never sleep)</span><span class='val'>"
             "<input type='checkbox' name='always_on' value='1'";
     if (always) html += " checked";
     html += "></span></div>";
+
+    html += "<div class='row'><span class='lbl'>Orientation</span><span class='val'>"
+            "<select name='orientation' style='padding:6px 10px;border-radius:8px;border:1px solid #D0CBC4;background:#fff;font-size:13px'>"
+            "<option value='portrait'" + String(orient == "portrait" ? " selected" : "") + ">Portrait (1200&times;1600)</option>"
+            "<option value='landscape'" + String(orient == "landscape" ? " selected" : "") + ">Landscape (1600&times;1200)</option>"
+            "</select></span></div>";
 
     html += "<div class='row'><span class='lbl'>Wake interval (minutes)</span><span class='val'>"
             "<input type='number' name='minutes' min='1' max='10080' value='";
@@ -642,7 +655,7 @@ void handleSetupPage(AsyncWebServerRequest *request) {
     html += String(activeSec);
     html += "'></span></div>";
 
-    html += "<button type='submit' class='btn'>Save power settings</button>";
+    html += "<button type='submit' class='btn'>Save settings</button>";
     html += "</form>";
 
     html += "<form method='POST' action='/ha-link/save' style='margin-top:22px'>";

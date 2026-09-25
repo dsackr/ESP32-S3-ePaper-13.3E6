@@ -4,9 +4,9 @@
 
 namespace low_battery {
 
-// Decompress the embedded 1200x1600 low battery image into dest.
+// Decompress the embedded low battery image into dest (respecting orientation).
 // dest must point to at least 960,000 bytes (EPD_13IN3E_FRAIMIC_BIN_BYTES).
-bool decompressImage(uint8_t *dest, size_t destLen);
+bool decompressImage(uint8_t *dest, size_t destLen, bool portrait);
 
 // Refreshes the e-paper panel synchronously with the low battery image.
 // Safe to call from setup() or loop() or HTTP test endpoints.
